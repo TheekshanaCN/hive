@@ -439,9 +439,11 @@ def create_app(model: str | None = None) -> web.Application:
     except ImportError:
         pass
 
-    # Desktop mode: no static file serving. The frontend lives in the
-    # Electron renderer process and is loaded from file:// (or the Vite
-    # dev server in dev mode) — not from this aiohttp app.
+    # Serve the built frontend SPA (if frontend/dist exists) so hitting the
+    # API host in a browser loads the dashboard instead of 404'ing. In
+    # Electron/desktop mode the renderer still loads from file:// and
+    # ignores this; in dev mode Vite is used instead.
+    _setup_static_serving(app)
 
     return app
 
