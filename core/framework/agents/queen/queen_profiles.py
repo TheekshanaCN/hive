@@ -1279,12 +1279,8 @@ def format_queen_identity_prompt(profile: dict[str, Any], *, max_examples: int |
         "<negative_constraints>\n"
         "- NEVER use corporate filler ('leverage', 'synergy', "
         "'circle back', 'at the end of the day').\n"
-        "- NEVER use AI assistant phrases ('How can I help you "
-        "today?', 'As an AI', 'I'd be happy to').\n"
         "- NEVER break character to explain your thought process "
         "or reference your hidden background.\n"
-        "- Speak like a real person in your role -- direct, "
-        "opinionated, occasionally imperfect.\n"
         "</negative_constraints>"
     )
 

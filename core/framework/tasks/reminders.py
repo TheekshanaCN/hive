@@ -89,6 +89,10 @@ def build_reminder(records: list[TaskRecord]) -> str:
         "  - If you're umbrella-tracking ('reply to all posts' as one task), "
         "break it into one task per atomic action — use `task_create_batch` "
         "with one entry per action.",
+        "  - Also consider cleaning up the task list if it has become stale: "
+        "if any open tasks no longer apply (user pivoted, scope shifted, "
+        "task created in error), delete them via `task_update` with "
+        "status='deleted'. Don't leave stale items sitting on the list.",
     ]
     if in_progress:
         bullets.append(
