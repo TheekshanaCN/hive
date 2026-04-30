@@ -69,15 +69,17 @@ logger = logging.getLogger(__name__)
 # Phrasing intentionally invites the queen's judgement; do NOT turn this
 # into a hard checklist.
 _INCUBATING_APPROVAL_GUIDANCE = (
-    "Approved to incubate colony '{colony_name}' for: {intended_purpose}\n\n"
+    "Approved to incubate colony '{colony_name}'.\n\n"
     "Your phase has flipped to INCUBATING. Before you call create_colony, "
-    "the worker will need operational details that are easy to lose in a "
+    "you'll need operational details that are easy to lose in a "
     "planning conversation. Take a moment to figure out what's still "
-    "ambiguous for THIS colony — for example: how many tasks should run "
-    "in parallel, what schedule fits (cron, interval, manual-only), what "
-    "should the worker write into progress.db so the user can review "
-    "results later, how to handle partial failures, what credentials or "
-    "MCP servers the worker needs that you haven't discussed. You don't "
+    "ambiguous for THIS colony — for example: how many worker processes "
+    "should run in parallel (e.g. 1 for a digest, 5 for a fan-out), what "
+    "schedule fits (cron, interval), what should the worker write into "
+    "progress tracking(progress.db) so the user "
+    "can review results later, how to handle partial failures, what "
+    "credentials or MCP servers the worker needs that you haven't "
+    "discussed. You don't "
     "need to cover every example — only the items that actually matter "
     "for this colony, and only the ones the user hasn't already implied. "
     "Use ask_user (batch several questions into one call when you have "
@@ -151,13 +153,11 @@ class QueenPhaseState:
     prompt_working: str = ""
     prompt_reviewing: str = ""
 
-    # Last-set incubation context (colony_name + intended_purpose), populated
-    # by start_incubating_colony when the evaluator approves. Read by
-    # get_current_prompt() to interpolate the colony name into the
-    # incubating role prompt so the queen sees the same name across turns
-    # without having to remember it from the tool result.
+    # Last-set incubation context, populated by start_incubating_colony when
+    # the evaluator approves. Read by get_current_prompt() to interpolate the
+    # colony name into the incubating role prompt so the queen sees the same
+    # name across turns without having to remember it from the tool result.
     incubating_colony_name: str | None = None
-    incubating_intended_purpose: str | None = None
 
     # Default skill operational protocols — appended to every phase prompt
     protocols_prompt: str = ""
@@ -421,7 +421,6 @@ class QueenPhaseState:
         self.phase = "independent"
         # Clear stale incubation context so a future incubation starts fresh.
         self.incubating_colony_name = None
-        self.incubating_intended_purpose = None
         tool_names = [t.name for t in self.independent_tools]
         logger.info("Queen phase → independent (source=%s, tools: %s)", source, tool_names)
         await self._emit_phase_event()
@@ -436,30 +435,25 @@ class QueenPhaseState:
         self,
         *,
         colony_name: str,
-        intended_purpose: str,
         source: str = "tool",
     ) -> None:
         """Switch to incubating phase — queen drafts the colony spec.
 
         Caller must already have validated colony_name. Stores the active
-        incubation context on self so get_current_prompt() can interpolate
-        it on every turn (the queen otherwise loses the colony_name after
-        the first tool result rolls past in the conversation history).
+        colony_name on self so get_current_prompt() can interpolate it on
+        every turn (the queen otherwise loses the colony_name after the
+        first tool result rolls past in the conversation history).
 
         Args:
             colony_name: Validated colony slug (lowercase alphanumeric + _).
-            intended_purpose: One-paragraph brief from the queen.
             source: "tool", "frontend", or "auto".
         """
         if self.phase == "incubating":
-            # Allow re-statement of context even when already incubating —
-            # the queen may have refined her intended_purpose mid-flight.
+            # Allow re-statement even when already incubating.
             self.incubating_colony_name = colony_name
-            self.incubating_intended_purpose = intended_purpose
             return
         self.phase = "incubating"
         self.incubating_colony_name = colony_name
-        self.incubating_intended_purpose = intended_purpose
         tool_names = [t.name for t in self.incubating_tools]
         logger.info(
             "Queen phase → incubating (source=%s, colony=%s, tools: %s)",
@@ -2211,7 +2205,6 @@ def register_queen_lifecycle_tools(
     async def start_incubating_colony(
         *,
         colony_name: str,
-        intended_purpose: str,
     ) -> str:
         """Gate the queen behind a one-shot readiness evaluator.
 
@@ -2231,18 +2224,6 @@ def register_queen_lifecycle_tools(
         if not _COLONY_NAME_RE.match(cn):
             return json.dumps(
                 {"error": ("colony_name must be lowercase alphanumeric with underscores (e.g. 'morning_hn_digest').")}
-            )
-
-        purpose = (intended_purpose or "").strip()
-        if not purpose:
-            return json.dumps(
-                {
-                    "error": (
-                        "intended_purpose is required — describe in one "
-                        "paragraph what the colony will do, on what "
-                        "cadence, and why it must outlive this chat."
-                    )
-                }
             )
 
         phase_state = getattr(session, "phase_state", None)
@@ -2305,7 +2286,6 @@ def register_queen_lifecycle_tools(
             llm=llm,
             messages=messages,
             colony_name=cn,
-            intended_purpose=purpose,
         )
 
         if not verdict.get("ready"):
@@ -2323,10 +2303,9 @@ def register_queen_lifecycle_tools(
 
         # Approved — flip phase.  switch_to_incubating publishes
         # QUEEN_PHASE_CHANGED so the frontend badge updates and stores
-        # the colony_name + purpose for the role prompt to interpolate.
+        # the colony_name for the role prompt to interpolate.
         await phase_state.switch_to_incubating(
             colony_name=cn,
-            intended_purpose=purpose,
             source="tool",
         )
 
@@ -2334,11 +2313,7 @@ def register_queen_lifecycle_tools(
             {
                 "status": "incubating",
                 "colony_name": cn,
-                "intended_purpose": purpose,
-                "guidance": _INCUBATING_APPROVAL_GUIDANCE.format(
-                    colony_name=cn,
-                    intended_purpose=purpose,
-                ),
+                "guidance": _INCUBATING_APPROVAL_GUIDANCE.format(colony_name=cn),
             }
         )
 
@@ -2378,17 +2353,8 @@ def register_queen_lifecycle_tools(
                         "'inbox_monitor')."
                     ),
                 },
-                "intended_purpose": {
-                    "type": "string",
-                    "description": (
-                        "One-paragraph brief: what the colony will do, "
-                        "on what cadence, why it must outlive this "
-                        "chat. Do NOT write the SKILL.md here — that "
-                        "happens in INCUBATING phase after approval."
-                    ),
-                },
             },
-            "required": ["colony_name", "intended_purpose"],
+            "required": ["colony_name"],
         },
     )
     registry.register(

@@ -144,13 +144,12 @@ several entries when you have multiple clarifications. \
 When the user clearly wants persistent / recurring / headless work that \
 needs to outlive THIS chat (e.g. "every morning", "monitor X and alert \
 me", "set up a job that…"), call ``start_incubating_colony`` with a \
-proposed colony_name and a one-paragraph intended_purpose. A side \
-evaluator reads the conversation and decides if the spec is settled. If \
-it returns ``not_ready`` you keep talking with the user — sort out \
-whatever the evaluator said is missing, then retry. If it returns \
-``incubating`` your phase flips and a new prompt takes over. Do not \
-try to write SKILL.md, fork directories, or otherwise build the colony \
-yourself in this phase.\
+proposed colony_name. A side evaluator reads the conversation and \
+decides if the spec is settled. If it returns ``not_ready`` you keep \
+talking with the user — sort out whatever the evaluator said is \
+missing, then retry. If it returns ``incubating`` your phase flips and \
+a new prompt takes over. Do not try to write SKILL.md, fork \
+directories, or otherwise build the colony yourself in this phase.\
 """
 
 _queen_role_incubating = """\
@@ -260,14 +259,14 @@ search_files, run_command, undo_changes
 - MUST Follow the browser-automation skill protocol before using browser tools.
 
 ## Hand off to a colony
-- start_incubating_colony(colony_name, intended_purpose) — Use this when \
-  the user wants persistent / recurring / headless work that needs to \
-  outlive THIS chat. It does NOT fork on its own; it spawns a one-shot \
-  evaluator that reads this conversation and decides whether the spec \
-  is settled enough to proceed. On approval your phase flips to \
-  INCUBATING and a new tool surface (including create_colony itself) \
-  unlocks. On rejection you stay here and keep the conversation going \
-  to fill the gaps the evaluator named.
+- start_incubating_colony(colony_name) — Use this when the user wants \
+  persistent / recurring / headless work that needs to outlive THIS \
+  chat. It does NOT fork on its own; it spawns a one-shot evaluator \
+  that reads this conversation and decides whether the spec is settled \
+  enough to proceed. On approval your phase flips to INCUBATING and a \
+  new tool surface (including create_colony itself) unlocks. On \
+  rejection you stay here and keep the conversation going to fill the \
+  gaps the evaluator named.
 """
 
 _queen_tools_incubating = """
