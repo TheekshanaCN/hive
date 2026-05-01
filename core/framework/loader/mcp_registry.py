@@ -51,6 +51,10 @@ _DEFAULT_LOCAL_SERVERS: dict[str, dict[str, Any]] = {
         "description": "File I/O: read, write, edit, search, list, run commands",
         "args": ["run", "python", "files_server.py", "--stdio"],
     },
+    "terminal-tools": {
+        "description": "Terminal capabilities: process exec, background jobs, PTY sessions, fs search. Bash-only on POSIX.",
+        "args": ["run", "python", "terminal_tools_server.py", "--stdio"],
+    },
 }
 
 # Aliases that earlier versions of ensure_defaults wrote under the wrong name.
@@ -58,6 +62,10 @@ _DEFAULT_LOCAL_SERVERS: dict[str, dict[str, Any]] = {
 # name so the active agents (queen, credential_tester) can find their tools.
 _STALE_DEFAULT_ALIASES: dict[str, str] = {
     "hive_tools": "hive-tools",
+    # 2026-04-30: shell-tools renamed to terminal-tools. Drop the stale name
+    # on next ensure_defaults() so the queen's allowlist (which now includes
+    # @server:terminal-tools) actually finds a server with the new name.
+    "terminal-tools": "shell-tools",
 }
 
 
@@ -77,7 +85,30 @@ class MCPRegistry:
     # ── Initialization ──────────────────────────────────────────────
 
     def initialize(self) -> None:
-        """Create directory structure and default files if missing."""
+        """Create directory structure, default files, and seed bundled servers.
+
+        Every read path (queen orchestrator, pipeline stage, CLI, routes)
+        calls this — keeping the seeding here means a fresh ``HIVE_HOME``
+        (e.g. the desktop's per-user dir under ``~/.config/Hive/users/<hash>/``
+        or ``~/Library/Application Support/Hive/users/<hash>/``) is always
+        populated with ``hive_tools`` / ``gcu-tools`` / ``files-tools`` /
+        ``shell-tools`` before any agent code reads ``installed.json``.
+        Without this, ``load_agent_selection()`` resolves an empty registry
+        and emits "Server X requested but not installed" warnings even
+        though the server is bundled.
+
+        Idempotent — already-installed entries are left untouched.
+        """
+        self._bootstrap_io()
+        self._seed_defaults()
+
+    def _bootstrap_io(self) -> None:
+        """Create the registry directory + empty config/installed files.
+
+        Split out from ``initialize()`` so ``_seed_defaults()`` can call it
+        without re-entering the seeding logic (which would recurse via
+        ``_read_installed()`` → ``initialize()``).
+        """
         self._base.mkdir(parents=True, exist_ok=True)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -88,21 +119,26 @@ class MCPRegistry:
             self._write_json(self._installed_path, {"servers": {}})
 
     def ensure_defaults(self) -> list[str]:
-        """Seed the built-in local MCP servers (hive-tools, gcu-tools, files-tools).
+        """Public alias kept for the ``hive mcp init`` CLI command.
 
-        Idempotent — servers already present are left untouched. Skips seeding
-        entirely when the source-tree ``tools/`` directory cannot be located
-        (e.g. when Hive is installed from a wheel rather than a checkout).
-
-        Returns the list of names that were newly registered.
+        Returns the list of newly-registered server names so the CLI can
+        print them. Same idempotent seeding logic as ``initialize()``.
         """
-        self.initialize()
+        self._bootstrap_io()
+        return self._seed_defaults()
 
+    def _seed_defaults(self) -> list[str]:
+        """Idempotently register the bundled default local servers.
+
+        Skips entirely when the source-tree ``tools/`` directory cannot
+        be located (e.g. wheel installs). Returns the list of names that
+        were newly registered.
+        """
         # parents: [0]=loader, [1]=framework, [2]=core, [3]=repo root
         tools_dir = Path(__file__).resolve().parents[3] / "tools"
         if not tools_dir.is_dir():
             logger.debug(
-                "MCPRegistry.ensure_defaults: tools dir %s missing; skipping default seed",
+                "MCPRegistry._seed_defaults: tools dir %s missing; skipping default seed",
                 tools_dir,
             )
             return []
@@ -119,7 +155,7 @@ class MCPRegistry:
         for canonical, stale in _STALE_DEFAULT_ALIASES.items():
             if stale in existing and canonical not in existing:
                 logger.info(
-                    "MCPRegistry.ensure_defaults: removing stale alias '%s' (canonical: '%s')",
+                    "MCPRegistry._seed_defaults: removing stale alias '%s' (canonical: '%s')",
                     stale,
                     canonical,
                 )
@@ -142,7 +178,7 @@ class MCPRegistry:
                 )
                 added.append(name)
             except MCPError as exc:
-                logger.warning("MCPRegistry.ensure_defaults: failed to seed '%s': %s", name, exc)
+                logger.warning("MCPRegistry._seed_defaults: failed to seed '%s': %s", name, exc)
 
         if added:
             logger.info("MCPRegistry: seeded default local servers: %s", added)
